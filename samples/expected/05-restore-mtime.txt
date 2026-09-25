@@ -1,0 +1,11 @@
+~ archive/2022/q1.txt
+= archive/2022/q2.txt
+= backup/alpha.txt
+= backup/beta.txt
+= backup/delta.txt
+= backup/gamma.txt
+= notes/todo.txt
+= report/appendix.txt
+= report/figures/t1.txt
+= report/summary.txt
+= settings.ini

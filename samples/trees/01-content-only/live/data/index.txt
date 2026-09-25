@@ -1,0 +1,2 @@
+idx-0001 a.txt
+idx-0002 b.txt

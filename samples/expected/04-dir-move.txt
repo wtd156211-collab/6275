@@ -1,0 +1,12 @@
+= data/points.csv
++ lib/util/a.txt
++ lib/util/b.txt
++ lib/util/c.txt
+= notes/todo.txt
+= old/keep.txt
+- old/util/a.txt
+- old/util/b.txt
+- old/util/c.txt
+= settings.ini
+= src/db.txt
+= src/main.txt

@@ -1,0 +1,10 @@
+= data/ids.txt
+= data/points.csv
+= docs/changelog.txt
+- docs/draft.txt
++ docs/final.txt
+= docs/spec.txt
+= notes/todo.txt
+= settings.ini
+= src/db.txt
+= src/main.txt

@@ -1,0 +1,9 @@
+# 每个案例的哈希次数上界：<案例名>\t<上界>
+# 口径见 README 第五节；把未变的文件也算一遍哈希必然超。
+01-content-only	3
+02-mtime-only	4
+03-rename	2
+04-dir-move	4
+05-restore-mtime	5
+06-add-remove	4
+total	22

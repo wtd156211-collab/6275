@@ -1,0 +1,10 @@
++ archive/2023/summary.txt
+= data/points.csv
+= inbox/keep.txt
++ inbox/patch.txt
++ inbox/报告 2024-01.txt
+- legacy/dump-a.txt
+- legacy/dump-b.txt
+= settings.ini
+= src/gui.txt
+= src/main.txt

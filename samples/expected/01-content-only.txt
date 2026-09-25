@@ -1,0 +1,10 @@
+= CHANGELOG.txt
+= config/limits.txt
+= data/index.txt
+= data/records.csv
+~ docs/format.txt
+~ docs/readme.txt
+= notes/todo.txt
+= settings.ini
+= src/main.txt
+= src/util.txt
