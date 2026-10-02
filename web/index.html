@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>rescan 变更树</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0;
+    font: 14px/1.5 -apple-system, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+  }
+  header { padding: 20px 28px 12px; border-bottom: 1px solid #30363d; }
+  h1 { margin: 0 0 8px; font-size: 18px; }
+  #meta { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 2px 10px; border-radius: 999px;
+    background: #161b22; border: 1px solid #30363d;
+  }
+  #hashes { font-weight: 700; }
+  .over { color: #f85149; font-weight: 700; }
+  .ok { color: #2ea043; }
+  .legend { display: inline-flex; gap: 14px; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  main { padding: 14px 28px 40px; }
+  .row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 1px 6px; white-space: nowrap;
+  }
+  .row:hover { background: #161b22; border-radius: 4px; }
+  .label { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+  .dir { color: #c9d1d9; font-weight: 600; }
+  .file .label { color: #e6edf3; }
+  .muted { color: #6e7681; }
+  .tag {
+    font-size: 11px; padding: 0 6px; border-radius: 4px;
+    border: 1px solid currentColor; color: inherit;
+  }
+  #error { color: #f85149; padding: 24px 28px; }
+  svg { flex: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">rescan 变更树</h1>
+  <div id="meta">
+    <span class="pill">哈希计算 <span id="hashes">–</span></span>
+    <span class="pill" id="budget-pill"></span>
+    <span class="legend" id="legend"></span>
+  </div>
+</header>
+<main id="tree"></main>
+
+<script>
+"use strict";
+
+const STATUS_TEXT = {
+  added: "新增",
+  modified: "修改",
+  removed: "删除",
+  unchanged: "未变"
+};
+const STATUS_ORDER = ["added", "modified", "removed", "unchanged"];
+const MARK = { added: "+", modified: "~", removed: "-", unchanged: "=" };
+
+function iconSvg(status, kind, colors) {
+  // 12x12 inline SVG: a file marker tinted with the engine palette,
+  // or a plain folder outline for directories.
+  const color = kind === "dir" ? "#8b949e" : colors[status];
+  let body;
+  if (kind === "dir") {
+    body = '<path d="M1.5 3.5h4l1.5 2h3.5a1 1 0 0 1 1 1V9a1.5 1.5 0 0 1-1.5 1.5H2A1.5 1.5 0 0 1 .5 9V4.5a1 1 0 0 1 1-1z" '
+      + 'fill="none" stroke="' + color + '" stroke-width="1.2"/>';
+  } else {
+    body =
+      '<rect x="1.2" y="0.8" width="8.6" height="10.4" rx="1.4" fill="none" '
+      + 'stroke="' + color + '" stroke-width="1.2"/>'
+      + '<text x="5.5" y="8.6" text-anchor="middle" font-size="6.5" '
+      + 'font-family="monospace" fill="' + color + '">' + MARK[status] + "</text>";
+  }
+  return '<svg width="13" height="13" viewBox="0 0 11 12" aria-hidden="true">'
+    + body + "</svg>";
+}
+
+function render(data) {
+  document.getElementById("title").textContent = data.tree + " — 变更树";
+  document.getElementById("hashes").textContent = String(data.hashes);
+
+  const budgetPill = document.getElementById("budget-pill");
+  if (data.budget === null) {
+    budgetPill.textContent = "预算：未给定";
+  } else {
+    const over = data.hashes > data.budget;
+    budgetPill.innerHTML = "预算 <b class='" + (over ? "over" : "ok") + "'>"
+      + data.hashes + " / " + data.budget + "</b> "
+      + (over ? "超预算" : "在预算内");
+  }
+
+  const legend = document.getElementById("legend");
+  for (const status of STATUS_ORDER) {
+    const span = document.createElement("span");
+    span.style.color = data.colors[status];
+    span.innerHTML = iconSvg(status, "file", data.colors)
+      + STATUS_TEXT[status] + " " + data.counts[status];
+    legend.appendChild(span);
+  }
+
+  const tree = document.getElementById("tree");
+  for (const node of data.nodes) {
+    const row = document.createElement("div");
+    row.className = "row " + node.kind;
+    row.style.paddingLeft = (10 + node.depth * 22) + "px";
+
+    const icon = document.createElement("span");
+    icon.innerHTML = iconSvg(node.status, node.kind, data.colors);
+    row.appendChild(icon.firstChild);
+
+    const slash = node.path.lastIndexOf("/");
+    const name = slash === -1 ? node.path : node.path.slice(slash + 1);
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = name + (node.kind === "dir" ? "/" : "");
+    row.appendChild(label);
+
+    if (node.kind === "file") {
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.style.color = data.colors[node.status];
+      tag.textContent = STATUS_TEXT[node.status];
+      row.appendChild(tag);
+      if (slash !== -1) {
+        const parent = document.createElement("span");
+        parent.className = "muted";
+        parent.textContent = node.path.slice(0, slash + 1);
+        row.appendChild(parent);
+      }
+    }
+    tree.appendChild(row);
+  }
+}
+
+fetch("data.json", { cache: "no-store" })
+  .then((resp) => {
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    return resp.json();
+  })
+  .then(render)
+  .catch((err) => {
+    const el = document.getElementById("tree");
+    el.id = "error";
+    el.textContent = "读取 data.json 失败：" + err.message
+      + "（请用 http 服务打开，file:// 下 fetch 会被拦截）";
+  });
+</script>
+</body>
+</html>
