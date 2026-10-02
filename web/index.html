@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>rescan 增量扫描变更树</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #f6f8fa;
+    --panel: #ffffff;
+    --border: #d0d7de;
+    --text: #1f2328;
+    --muted: #59636e;
+    --dir-color: #424a53;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 -apple-system, "Segoe UI", "PingFang SC",
+          "Microsoft YaHei", sans-serif;
+  }
+  header {
+    padding: 20px 24px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+  }
+  h1 { margin: 0 0 4px; font-size: 18px; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .cards { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    background: var(--panel);
+    min-width: 120px;
+  }
+  .card .k { font-size: 12px; color: var(--muted); }
+  .card .v { font-size: 20px; font-weight: 600; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 13px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .dot {
+    width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+  }
+  main { padding: 16px 24px 40px; }
+  .tree {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 8px;
+    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    font-size: 13px;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    padding: 1px 6px;
+    border-radius: 4px;
+    white-space: pre;
+  }
+  .row:hover { background: #f0f3f6; }
+  .row.dir { cursor: pointer; user-select: none; }
+  .row svg { flex: none; margin-right: 5px; }
+  .caret {
+    flex: none;
+    width: 14px;
+    color: var(--muted);
+    transition: transform .12s ease;
+    font-size: 10px;
+  }
+  .row.dir.collapsed .caret { transform: rotate(-90deg); }
+  .path { font-variant-east-asian: monospace; }
+  .error {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    color: #b42318;
+  }
+  code {
+    background: #eff1f3;
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="icon-dir" viewBox="0 0 16 16">
+    <path fill-rule="evenodd" d="M1.75 2A1.75 1.75 0 000 3.75v8.5C0 13.216.784 14 1.75 14h12.5A1.75 1.75 0 0016 12.25v-6.5A1.75 1.75 0 0014.25 4H7.677L6.137 2.553A1.75 1.75 0 005.051 2H1.75z"/>
+  </symbol>
+  <symbol id="icon-file" viewBox="0 0 16 16">
+    <path fill-rule="evenodd" d="M2.75 1.5A1.75 1.75 0 001 3.25v9.5C1 13.716 1.784 14.5 2.75 14.5h10.5A1.75 1.75 0 0015 12.75V5.664a1.75 1.75 0 00-.513-1.237l-2.414-2.414A1.75 1.75 0 0010.836 1.5H2.75z"/>
+  </symbol>
+</svg>
+<header>
+  <h1 id="title">变更树</h1>
+  <div class="sub" id="subtitle">正在读取 data.json …</div>
+  <div class="cards" id="cards"></div>
+  <div class="legend" id="legend"></div>
+</header>
+<main>
+  <div class="tree" id="tree"></div>
+</main>
+<script>
+"use strict";
+
+var STATUS_META = [
+  ["added", "新增"],
+  ["modified", "修改"],
+  ["removed", "删除"],
+  ["unchanged", "未变"]
+];
+
+function svgIcon(kind) {
+  var svgNS = "http://www.w3.org/2000/svg";
+  var svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("width", "14");
+  svg.setAttribute("height", "14");
+  svg.setAttribute("fill", kind === "dir" ? "var(--dir-color)" : "currentColor");
+  var use = document.createElementNS(svgNS, "use");
+  use.setAttribute("href", kind === "dir" ? "#icon-dir" : "#icon-file");
+  svg.appendChild(use);
+  return svg;
+}
+
+function textNode(s) { return document.createTextNode(s); }
+
+function showError(message) {
+  document.getElementById("subtitle").textContent = "读取 data.json 失败";
+  var box = document.createElement("div");
+  box.className = "error";
+  box.textContent = message;
+  var main = document.querySelector("main");
+  main.replaceChildren(box);
+}
+
+function renderHeader(data) {
+  document.getElementById("title").textContent = data.tree + " — 变更树";
+  var budgetText = data.budget === null
+    ? "未给预算（本次哈希计算次数：" + data.hashes + "）"
+    : "哈希计算 " + data.hashes + " / " + data.budget + " 次（预算）";
+  document.getElementById("subtitle").textContent = budgetText;
+
+  var cards = document.getElementById("cards");
+  cards.replaceChildren();
+  STATUS_META.forEach(function(pair) {
+    var key = pair[0];
+    var card = document.createElement("div");
+    card.className = "card";
+    var k = document.createElement("div");
+    k.className = "k";
+    k.textContent = pair[1];
+    var v = document.createElement("div");
+    v.className = "v";
+    // 颜色与数字全部来自引擎下发的 data.json，页面不重算。
+    v.style.color = data.colors[key];
+    v.textContent = String(data.counts[key]);
+    card.appendChild(k);
+    card.appendChild(v);
+    cards.appendChild(card);
+  });
+
+  var legend = document.getElementById("legend");
+  legend.replaceChildren();
+  STATUS_META.forEach(function(pair) {
+    var item = document.createElement("span");
+    var dot = document.createElement("i");
+    dot.className = "dot";
+    dot.style.background = data.colors[pair[0]];
+    item.appendChild(dot);
+    item.appendChild(textNode(pair[1] + " " + pair[0]));
+    legend.appendChild(item);
+  });
+}
+
+function renderTree(data) {
+  var tree = document.getElementById("tree");
+  tree.replaceChildren();
+  var colors = data.colors;
+  var collapsed = {};
+
+  function rebuild() {
+    tree.replaceChildren();
+    data.nodes.forEach(function(node) {
+      var ancestors = node.path.split("/").slice(0, -1);
+      var hidden = ancestors.some(function(a) { return collapsed[a]; });
+      if (hidden) return;
+
+      var row = document.createElement("div");
+      row.className = "row " + node.kind +
+        (node.kind === "dir" && collapsed[node.path] ? " collapsed" : "");
+      row.style.paddingLeft = String(node.depth * 18 + 6) + "px";
+
+      var caret = document.createElement("span");
+      caret.className = "caret";
+      caret.textContent = node.kind === "dir" ? "▼" : "";
+      row.appendChild(caret);
+      row.appendChild(svgIcon(node.kind));
+
+      var label = document.createElement("span");
+      label.className = "path";
+      label.textContent = node.path.split("/").pop();
+      if (node.kind === "file") {
+        label.style.color = colors[node.status];
+        row.setAttribute("title", node.path + " — " + node.status);
+      } else {
+        label.style.color = "var(--dir-color)";
+      }
+      row.appendChild(label);
+
+      if (node.kind === "dir") {
+        row.addEventListener("click", function() {
+          collapsed[node.path] = !collapsed[node.path];
+          rebuild();
+        });
+      }
+      tree.appendChild(row);
+    });
+  }
+  rebuild();
+}
+
+fetch("data.json", { cache: "no-store" })
+  .then(function(resp) {
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    return resp.json();
+  })
+  .then(function(data) {
+    renderHeader(data);
+    renderTree(data);
+  })
+  .catch(function(err) {
+    showError("无法读取同目录 data.json：" + err.message +
+      "。file:// 下 fetch 会被拦截，请在仓库根执行 " +
+      "python -m http.server 8000 --directory web 后打开 http://localhost:8000/。");
+  });
+</script>
+</body>
+</html>
